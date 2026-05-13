@@ -3,7 +3,9 @@ Plant Mapper - Streamlit Application
 A companion planting tool for planning vegetable garden layouts.
 """
 
+import math
 import streamlit as st
+import textwrap
 from plants_data import (
     PLANTS_CURSOR, PLANTS_GARTENZAUBER, DEFAULT_PLANT_SELECTIONS,
     get_plant_by_id, get_plant_companion_info,
@@ -55,6 +57,144 @@ st.markdown("""
     }
     .column-total {
         margin-top: 10px;
+        padding: 8px;
+        background-color: #f0f0f0;
+        border-radius: 4px;
+        text-align: center;
+        font-size: 0.9em;
+        color: #666;
+        border-top: 3px solid #4CAF50;
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 5px 0;
+    }
+    .legend-sample {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        background-color: #90EE90;
+    }
+    .planting-map-wrapper {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        align-items: center;
+    }
+    .planting-map-summary {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        max-width: 1000px;
+        padding: 0 10px;
+    }
+    .planting-map-summary div {
+        background-color: #f8faf8;
+        border: 1px solid #e9f0ea;
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-size: 0.95rem;
+        color: #2f5f43;
+    }
+    .plot-square {
+        width: 100%;
+        max-width: 1000px;
+        aspect-ratio: 1 / 1;
+        border: 2px solid #4CAF50;
+        border-radius: 18px;
+        background: #ffffff;
+        padding: 14px;
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+        position: relative;
+        overflow: hidden;
+        min-height: 400px;
+        max-height: 80vh;
+    }
+    .plot-square::before {
+        content: attr(data-width);
+        position: absolute;
+        top: 12px;
+        left: 14px;
+        color: #4CAF50;
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+    .plot-square::after {
+        content: attr(data-length);
+        position: absolute;
+        bottom: 12px;
+        right: 14px;
+        color: #4CAF50;
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+    .plot-inner {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        gap: 10px;
+        align-items: start;
+        justify-items: stretch;
+        overflow: hidden;
+    }
+    .planting-column {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background: linear-gradient(180deg, #fbfdf9 0%, #f3f8f1 100%);
+        border: 1px solid #dfe9dd;
+        border-radius: 14px;
+        padding: 10px;
+        min-width: 0;
+        overflow: hidden;
+    }
+    .column-path {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(76, 175, 80, 0.08);
+        border: 1px dashed #4CAF50;
+        border-radius: 14px;
+        color: #4F7F53;
+        font-size: 0.85rem;
+        padding: 8px;
+        min-height: 100px;
+    }
+    .planting-column-header {
+        font-weight: 700;
+        color: #2c5d39;
+        text-align: center;
+        line-height: 1.2;
+        margin-bottom: 4px;
+    }
+    .planting-column-header small {
+        display: block;
+        margin-top: 4px;
+        font-size: 0.85rem;
+        color: #4f7f53;
+        font-weight: 500;
+    }
+    .plot-square .plant-placement {
+        padding: 6px 6px;
+        margin: 0;
+    }
+    .plot-square .plant-name {
+        font-weight: bold;
+        color: #2c3e50;
+        font-size: 0.75em;
+    }
+    .plot-square .distance-value {
+        font-size: 0.65em;
+        color: #666;
+        margin-top: 4px;
+    }
+    .column-total {
+        margin-top: auto;
         padding: 8px;
         background-color: #f0f0f0;
         border-radius: 4px;
@@ -621,6 +761,9 @@ def render_planting_map():
         return
     
     planting_map = st.session_state.planting_map
+    plot_length = st.session_state.get('plot_length', 6.0)
+    plot_width = st.session_state.get('plot_width', 8.0)
+    plot_area = plot_length * plot_width
     
     st.subheader("🗺️ Planting Map")
     
@@ -633,54 +776,75 @@ def render_planting_map():
         </div>
         """, unsafe_allow_html=True)
     
-    # Render the map using columns
+    st.markdown(f"""
+    <div class="planting-map-summary">
+        <div><strong>Plot Dimensions</strong><br>{plot_length:.1f} m × {plot_width:.1f} m</div>
+        <div><strong>Total Area</strong><br>{plot_area:.1f} m²</div>
+        <div><strong>Columns</strong><br>{len(planting_map)}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    widths = []
+    for column_data in planting_map:
+        raw_width = column_data['max_row_to_row_distance']
+        widths.append(max(1, round(raw_width / 10, 1)))
+    
+    grid_tracks = []
+    for idx, width in enumerate(widths):
+        grid_tracks.append(f"{width}fr")
+        if idx < len(widths) - 1:
+            grid_tracks.append("30px")
+    
+    grid_style = "grid-template-columns: " + " ".join(grid_tracks) + ";"
+    
+    html = textwrap.dedent(f"""
+    <div class="planting-map-wrapper">
+    <div class="plot-square" data-width="Width: {plot_width:.1f} m" data-length="Length: {plot_length:.1f} m">
+    <div class="plot-inner" style="{grid_style}">
+    """)
+    
     for col_idx, column_data in enumerate(planting_map):
-        col, distance_col = st.columns([3, 1])
+        max_spacing = column_data['max_row_to_row_distance']
+        widest_plants = [p['plant']['name'] for p in column_data['plants'] if p['plant']['spacing']['row_to_row'] == max_spacing]
+        widest_text = ", ".join(set(widest_plants))  # Remove duplicates
         
-        with col:
-            st.markdown(f"**Column {col_idx + 1}**")
-            
-            for plant_idx, placement in enumerate(column_data['plants']):
-                plant = placement['plant']
-                
-                group_class = ""
-                if placement['group_start'] and placement['group_end']:
-                    group_class = "group-start group-end"
-                elif placement['group_start']:
-                    group_class = "group-start"
-                elif placement['group_end']:
-                    group_class = "group-end"
-                else:
-                    group_class = "group-middle"
-                
-                fleece_class = "needs-fleece" if plant['needs_fleece_cover'] else ""
-                
-                plant_html = f"""
-                <div class="plant-placement {group_class} {fleece_class}">
-                    <div class="plant-name">{plant['name']}</div>
-                """
-                if plant_idx < len(column_data['plants']) - 1:
-                    plant_html += f'<div class="distance-value">{placement["distance"]} cm</div>'
-                plant_html += "</div>"
-                
-                st.markdown(plant_html, unsafe_allow_html=True)
-            
-            total_plant_to_plant = sum(p['plant']['spacing']['plant_to_plant'] for p in column_data['plants'])
-            st.markdown(f"""
-            <div class="column-total">
-                Sum of plant-to-plant: {total_plant_to_plant} cm
-            </div>
-            """, unsafe_allow_html=True)
+        html += textwrap.dedent(f"""
+    <div class='planting-column'>
+    <div class='planting-column-header'>Column {col_idx + 1}
+    <small>Width: {max_spacing} cm ({widest_text})</small>
+    </div>
+    """)
+        
+        for plant_idx, placement in enumerate(column_data['plants']):
+            plant = placement['plant']
+            fleece_class = "needs-fleece" if plant['needs_fleece_cover'] else ""
+            html += textwrap.dedent(f"""
+    <div class='plant-placement {fleece_class}'>
+    <div class='plant-name'>{plant['name']}</div>
+    <div class='distance-value'>Spacing: {placement['distance']} cm</div>
+    </div>
+    """)
+        
+        total_plant_to_plant = sum(p['plant']['spacing']['plant_to_plant'] for p in column_data['plants'])
+        html += textwrap.dedent(f"""
+    <div class='column-total'>
+    Sum of plant-to-plant: {total_plant_to_plant} cm
+    </div>
+    </div>
+    """)
         
         if col_idx < len(planting_map) - 1:
-            with distance_col:
-                st.markdown(f"""
-                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666; font-size: 0.9em;">
-                    ← {column_data['max_row_to_row_distance']} cm →
-                </div>
-                """, unsafe_allow_html=True)
-        
-        st.divider()
+            html += textwrap.dedent("""
+    <div class='column-path'>30 cm walking path</div>
+    """)
+    
+    html += textwrap.dedent("""
+    </div>
+    </div>
+    </div>
+    """)
+    
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_plant_details():
