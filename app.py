@@ -815,13 +815,33 @@ def render_planting_map():
     </div>
     """)
         
-        for plant_idx, placement in enumerate(column_data['plants']):
+        # Group consecutive identical plants
+        grouped_plants = []
+        current_group = None
+        for placement in column_data['plants']:
             plant = placement['plant']
-            fleece_class = "needs-fleece" if plant['needs_fleece_cover'] else ""
+            key = (plant['name'], placement['distance'], plant['needs_fleece_cover'])
+            if current_group and current_group['key'] == key:
+                current_group['count'] += 1
+            else:
+                if current_group:
+                    grouped_plants.append(current_group)
+                current_group = {
+                    'key': key,
+                    'count': 1,
+                    'name': plant['name'],
+                    'distance': placement['distance'],
+                    'fleece': plant['needs_fleece_cover']
+                }
+        if current_group:
+            grouped_plants.append(current_group)
+        
+        for group in grouped_plants:
+            fleece_class = "needs-fleece" if group['fleece'] else ""
+            display_text = f"{group['count']} x {group['name']}, {group['distance']} cm" if group['count'] > 1 else f"{group['name']}, {group['distance']} cm"
             html += textwrap.dedent(f"""
     <div class='plant-placement {fleece_class}'>
-    <div class='plant-name'>{plant['name']}</div>
-    <div class='distance-value'>Spacing: {placement['distance']} cm</div>
+    <div class='plant-name'>{display_text}</div>
     </div>
     """)
         
